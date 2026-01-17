@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="global-close-btn" class="close-btn" onclick="closeApp()">×</div>
+
+    <div id="login-container">
+        <div class="card" id="login-card">
+            <h2>用户登录</h2>
+            <div id="login-form">
+                <input type="text" id="username" placeholder="用户名">
+                <input type="password" id="password" placeholder="密码">
+                <button id="login-btn" onclick="submitLogin()">登 录</button>
+                <div id="message" style="color:red; margin-top:10px; font-size:12px;"></div>
+            </div>
+            <div id="loading-overlay" class="hidden" style="margin-top:20px;">
+                <div style="color: #666;">正在连接系统...</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="main-interface">
+        <div class="navbar">
+            <div class="logo">Luogu Monitor Pro</div>
+            <div class="user-profile" onclick="toggleDropdown()">
+                <span class="user-name" id="display-username">User</span>
+                <div class="avatar" id="display-avatar">U</div>
+                <div class="dropdown-menu" id="user-menu">
+                    <div class="dropdown-item" onclick="handleLogout(event)">退出登录</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="content-area">
+            <div class="dashboard-card">
+                <h3>监控控制台</h3>
+                <p>当前状态：<span style="color: #53c41a; font-weight: bold;">运行中</span></p>
+                <p style="font-size: 13px; color: #666;">后台自动抓取中。新提交将触发双重弹窗提醒。</p>
+                <div style="margin-top: 15px;">
+                    <button class="action-btn" onclick="openConfigModal()">📋 管理监控名单</button>
+                </div>
+            </div>
+
+            <div class="dashboard-card leaderboard-section" style="margin-top: 20px;">
+                <h3>提交排行榜</h3>
+                
+                <div class="filter-bar">
+                    <div class="filter-item">
+                        <label>近</label>
+                        <input type="number" id="filter-days" value="7" min="1" max="60" style="width: 50px;">
+                        <label>天</label>
+                    </div>
+                    <div class="filter-item">
+                        <label>难度范围：</label>
+                        <select id="filter-min-lv">
+                            <option value="0">入门</option>
+                            <option value="1">普及−</option>
+                            <option value="2">普及/提高−</option>
+                            <option value="3">普及+/提高</option>
+                            <option value="4">提高+/省选</option>
+                            <option value="5">省选/NOI−</option>
+                            <option value="6">NOI/CTSC</option>
+                        </select>
+                        <span>至</span>
+                        <select id="filter-max-lv">
+                            <option value="0">入门</option>
+                            <option value="1">普及−</option>
+                            <option value="2">普及/提高−</option>
+                            <option value="3">普及+/提高</option>
+                            <option value="4">提高+/省选</option>
+                            <option value="5">省选/NOI−</option>
+                            <option value="6" selected>NOI/CTSC</option>
+                        </select>
+                    </div>
+                    <button class="search-btn" onclick="loadLeaderboard()">查询</button>
+                </div>
+
+                <div class="table-container">
+                    <table id="leaderboard-table">
+                        <thead>
+                            <tr>
+                                <th width="60">排名</th>
+                                <th>用户</th>
+                                <th width="100">通过数</th>
+                                <th width="80">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr><td colspan="4" style="text-align:center; color:#999;">点击查询加载数据</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="config-modal" class="modal-overlay hidden">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3>监控名单管理</h3>
+                <span class="close-icon" onclick="closeConfigModal()">×</span>
+            </div>
+            <div class="modal-body">
+                <div class="input-group">
+                    <input type="text" id="new-uid-input" placeholder="输入用户 ID (如 102468)">
+                    <button class="add-btn" onclick="addUidItem()">添加</button>
+                </div>
+                <div class="uid-list-container">
+                    <p style="font-size: 12px; color: #666; margin-bottom: 5px;">当前监控的用户列表：</p>
+                    <div id="uid-tags-area" class="tags-area"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="cancel-btn" onclick="closeConfigModal()">取消</button>
+                <button class="save-btn" onclick="saveConfig()">保存并重启监控</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="user-detail-modal" class="modal-overlay hidden">
+        <div class="modal-card" style="width: 600px;">
+            <div class="modal-header">
+                <h3>用户提交记录: <span id="detail-username"></span></h3>
+                <span class="close-icon" onclick="closeUserDetailModal()">×</span>
+            </div>
+            <div class="modal-body" style="padding: 0;">
+                <div class="record-list-header">
+                    <span style="flex:1">时间</span>
+                    <span style="flex:2">题目</span>
+                    <span style="flex:1; text-align:right;">难度</span>
+                </div>
+                <div id="user-record-list" class="record-list-container">
+                    </div>
+                <div class="pagination-bar">
+                    <button id="prev-page-btn" onclick="changePage(-1)">上一页</button>
+                    <span id="page-info">第 1 页</span>
+                    <button id="next-page-btn" onclick="changePage(1)">下一页</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="notification-container"></div>
+
+    <script>
+        // --- 全局变量 ---
+        let currentMonitorList = []; // 存储 {id, name} 对象
+        let currentDetailUid = null;
+        let currentDetailPage = 1;
+        
+        // --- 初始化 ---
+        function waitForPywebview() {
+            if (window.pywebview) {
+                initCheck();
+            } else {
+                setTimeout(waitForPywebview, 100);
+            }
+        }
+        async function initCheck() {
+            try {
+                const res = await pywebview.api.init_check();
+                if (res.status === 'success') showWelcome(res.username);
+                else document.getElementById('loading-overlay').classList.add('hidden');
+            } catch (e) {}
+        }
+
+        // --- 登录 ---
+        async function submitLogin() {
+            const userIn = document.getElementById('username').value;
+            const passIn = document.getElementById('password').value;
+            const btn = document.getElementById('login-btn');
+            const overlay = document.getElementById('loading-overlay');
+            
+            if(!userIn || !passIn) return alert("请输入账号密码");
+            
+            btn.disabled = true; overlay.classList.remove('hidden');
+            try {
+                const res = await pywebview.api.attempt_login(userIn, passIn);
+                if (res.status === 'success') showWelcome(res.username);
+                else { alert(res.message); btn.disabled = false; overlay.classList.add('hidden'); }
+            } catch (e) { alert(e); btn.disabled = false; overlay.classList.add('hidden'); }
+        }
+
+        function showWelcome(username) {
+            pywebview.api.start_monitoring(username);
+            document.getElementById('display-username').innerText = username;
+            document.getElementById('display-avatar').innerText = username.charAt(0).toUpperCase();
+            document.getElementById('loading-overlay').classList.add('hidden');
+            document.getElementById('login-container').style.display = 'none';
+            const main = document.getElementById('main-interface');
+            main.style.opacity = '1'; main.style.pointerEvents = 'auto';
+            
+            // 自动加载一次排行榜
+            loadLeaderboard();
+        }
+
+        // ==========================================
+        // --- 排行榜功能 ---
+        // ==========================================
+        async function loadLeaderboard() {
+            const days = document.getElementById('filter-days').value;
+            const minLv = document.getElementById('filter-min-lv').value;
+            const maxLv = document.getElementById('filter-max-lv').value;
+            const tbody = document.querySelector('#leaderboard-table tbody');
+            
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">加载中...</td></tr>';
+            
+            try {
+                const res = await pywebview.api.get_leaderboard_data(days, minLv, maxLv);
+                if(res.status === 'success') {
+                    renderLeaderboard(res.data);
+                } else {
+                    alert(res.message);
+                }
+            } catch(e) { alert("查询失败: " + e); }
+        }
+
+        function renderLeaderboard(data) {
+            const tbody = document.querySelector('#leaderboard-table tbody');
+            tbody.innerHTML = '';
+            
+            if (data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:#999; padding:20px;">该范围内无提交记录</td></tr>';
+                return;
+            }
+
+            data.forEach((item, index) => {
+                const tr = document.createElement('tr');
+                // 前三名加图标
+                let rankStr = index + 1;
+                if(index === 0) rankStr = '🥇 1';
+                if(index === 1) rankStr = '🥈 2';
+                if(index === 2) rankStr = '🥉 3';
+
+                tr.innerHTML = `
+                    <td style="text-align:center; font-weight:bold;">${rankStr}</td>
+                    <td>${item.user_name} <span style="font-size:12px; color:#999;">(${item.user_id})</span></td>
+                    <td style="text-align:center; color:#53c41a; font-weight:bold;">${item.count}</td>
+                    <td style="text-align:center;">
+                        <button class="small-btn" onclick="openUserDetail('${item.user_id}')">详情</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // ==========================================
+        // --- 用户详情 & 分页 ---
+        // ==========================================
+        function openUserDetail(uid) {
+            currentDetailUid = uid;
+            currentDetailPage = 1;
+            document.getElementById('user-detail-modal').classList.remove('hidden');
+            loadUserPage();
+        }
+
+        async function loadUserPage() {
+            const container = document.getElementById('user-record-list');
+            container.innerHTML = '<div style="padding:20px; text-align:center;">加载中...</div>';
+            
+            try {
+                const res = await pywebview.api.get_user_records_page(currentDetailUid, currentDetailPage);
+                if(res.status === 'success') {
+                    document.getElementById('detail-username').innerText = res.user_name;
+                    renderRecordList(res.data);
+                    updatePagination(res.total);
+                } else {
+                    container.innerHTML = `<div style="color:red; text-align:center;">${res.message}</div>`;
+                }
+            } catch(e) { alert("获取详情失败: " + e); }
+        }
+
+        function renderRecordList(records) {
+            const container = document.getElementById('user-record-list');
+            container.innerHTML = '';
+            
+            if(records.length === 0) {
+                container.innerHTML = '<div style="padding:20px; text-align:center; color:#999;">本页无数据</div>';
+                return;
+            }
+
+            records.forEach(r => {
+                const row = document.createElement('div');
+                row.className = 'record-row';
+                // 使用后端传回的 color
+                row.innerHTML = `
+                    <span style="flex:1; font-size:13px; color:#666;">${r.post_date}</span>
+                    <span style="flex:2; font-weight:500;">${r.problem_name} <span style="font-size:12px;color:#999;">(${r.problem_number})</span></span>
+                    <span style="flex:1; text-align:right;">
+                        <span class="diff-tag" style="background-color:${r.color}">${r.difficulty}</span>
+                    </span>
+                `;
+                container.appendChild(row);
+            });
+        }
+
+        function updatePagination(total) {
+            const pageSize = 10;
+            const totalPages = Math.ceil(total / pageSize) || 1;
+            document.getElementById('page-info').innerText = `第 ${currentDetailPage} / ${totalPages} 页 (共 ${total} 条)`;
+            document.getElementById('prev-page-btn').disabled = (currentDetailPage <= 1);
+            document.getElementById('next-page-btn').disabled = (currentDetailPage >= totalPages);
+        }
+
+        function changePage(delta) {
+            currentDetailPage += delta;
+            loadUserPage();
+        }
+
+        function closeUserDetailModal() {
+            document.getElementById('user-detail-modal').classList.add('hidden');
+        }
+
+        // ==========================================
+        // --- 监控配置 (用户名: 编号) ---
+        // ==========================================
+        async function openConfigModal() {
+            document.getElementById('config-modal').classList.remove('hidden');
+            document.getElementById('uid-tags-area').innerHTML = '加载中...';
+            try {
+                const res = await pywebview.api.get_monitor_config();
+                if(res.status === 'success') {
+                    currentMonitorList = res.data; // [{id: "1", name: "xx"}, ...]
+                    renderConfigTags();
+                }
+            } catch(e) { alert(e); }
+        }
+
+        function renderConfigTags() {
+            const container = document.getElementById('uid-tags-area');
+            container.innerHTML = '';
+            if(!currentMonitorList.length) {
+                container.innerHTML = '<span style="color:#999;">暂无</span>'; return;
+            }
+            currentMonitorList.forEach((item, idx) => {
+                const tag = document.createElement('div');
+                tag.className = 'uid-tag';
+                // 显示：用户名: ID
+                tag.innerHTML = `${item.name}: ${item.id} <span onclick="removeMonitorItem(${idx})">×</span>`;
+                container.appendChild(tag);
+            });
+        }
+
+        function addUidItem() {
+            const val = document.getElementById('new-uid-input').value.trim();
+            if(!val) return;
+            // 查重
+            if(currentMonitorList.some(i => i.id === val)) return alert("已存在");
+            
+            // 暂时添加 ID，名字设为"待获取" (只有保存重启爬虫后才能获取真名)
+            currentMonitorList.push({id: val, name: "新增"});
+            renderConfigTags();
+            document.getElementById('new-uid-input').value = '';
+        }
+
+        function removeMonitorItem(idx) {
+            currentMonitorList.splice(idx, 1);
+            renderConfigTags();
+        }
+
+        async function saveConfig() {
+            const btn = document.querySelector('#config-modal .save-btn');
+            btn.innerText = "保存中..."; btn.disabled = true;
+            // 只提取 ID 发送给后端
+            const idsOnly = currentMonitorList.map(item => item.id);
+            try {
+                const res = await pywebview.api.save_monitor_config(idsOnly);
+                if(res.status === 'success') {
+                    alert("保存成功，监控已重启");
+                    closeConfigModal();
+                } else alert(res.message);
+            } catch(e) { alert(e); }
+            btn.innerText = "保存并重启监控"; btn.disabled = false;
+        }
+        function closeConfigModal() { document.getElementById('config-modal').classList.add('hidden'); }
+
+        // --- 应用内通知 (被动接收) ---
+        function createNotificationCard(data) {
+            const container = document.getElementById('notification-container');
+            const card = document.createElement('div');
+            card.className = 'notify-card';
+            card.style.borderLeft = `5px solid ${data.color}`;
+            card.innerHTML = `
+                <div class="notify-header"><span class="notify-user">${data.user_name}</span><span class="notify-time">${data.time_str}</span></div>
+                <div class="notify-body">提交了 <b>${data.problem_number}</b><div class="notify-pname">${data.problem_name}</div></div>
+                <div class="notify-footer"><span class="difficulty-badge" style="background:${data.color}">${data.difficulty}</span></div>
+                <div class="notify-close" onclick="this.parentElement.remove()">×</div>`;
+            container.appendChild(card);
+            setTimeout(() => { card.classList.add('fade-out'); setTimeout(()=>card.remove(),500); }, 8000);
+        }
+
+        // --- 通用 ---
+        function toggleDropdown() { document.getElementById('user-menu').classList.toggle('active'); }
+        window.onclick = e => { if(!e.target.closest('.user-profile')) document.getElementById('user-menu').classList.remove('active'); }
+        async function handleLogout(e) { e.stopPropagation(); await pywebview.api.logout(); location.reload(); }
+        function closeApp() { pywebview.api.close_app(); }
+
+        waitForPywebview();
+    </script>
+</body>
+</html>
