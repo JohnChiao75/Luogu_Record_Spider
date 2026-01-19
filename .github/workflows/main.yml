@@ -1,0 +1,139 @@
+name: Build and Release Dev-Build
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:  # 允许手动触发
+
+jobs:
+  build:
+    runs-on: windows-latest  # 由于项目目前只支持Windows
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # 获取所有历史记录以便打tag
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.13'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install playwright ddddocr
+        playwright install
+        playwright install-deps  # 安装Playwright依赖
+    
+    - name: Modify ddddocr classification function
+      run: |
+        # 查找ddddocr安装位置并修改classification函数
+        $ddddocrPath = python -c "import ddddocr; import os; print(os.path.dirname(ddddocr.__file__))"
+        $commonPath = Join-Path $ddddocrPath "common.py"
+        
+        # 备份原文件
+        Copy-Item $commonPath "$commonPath.backup"
+        
+        # 读取并修改文件
+        $content = Get-Content $commonPath -Raw
+        $newContent = $content -replace 'def classification\(self, img: bytes\):[\s\S]*?return.*', @'
+    def classification(self, img: bytes):
+        image = Image.open(io.BytesIO(img))
+        image = image.resize((int(image.size[0] * (64 / image.size[1])), 64), Image.Resampling.LANCZOS).convert('L')
+        image = np.array(image).astype(np.float32)
+        image = np.expand_dims(image, axis=0) / 255.
+        image = (image - 0.5) / 0.5
+        ort_inputs = {'input1': np.array([image])}
+        ort_outs = self.__ort_session.run(None, ort_inputs)
+        result = []
+        last_item = 0
+        for item in ort_outs[0][0]:
+            if item == last_item:
+                continue
+            else:
+                last_item = item
+            if item != 0:
+                result.append(self.__charset[item])
+
+        return ''.join(result)
+'@
+        
+        Set-Content $commonPath $newContent -Encoding UTF8
+        Write-Host "Modified ddddocr classification function"
+    
+    - name: Test the application
+      run: |
+        # 简单的导入测试
+        python -c "import ddddocr; print('ddddocr version:', ddddocr.__version__)"
+        python -c "from playwright.sync_api import sync_playwright; print('Playwright imported successfully')"
+    
+    - name: Create dev-build tag
+      id: tag_version
+      run: |
+        # 获取当前日期和时间作为标签后缀
+        $date = Get-Date -Format "yyyyMMdd-HHmmss"
+        $tagName = "dev-build-$date"
+        echo "TAG_NAME=$tagName" >> $env:GITHUB_OUTPUT
+        
+        # 创建并推送标签
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git tag -a "$tagName" -m "Development build from $date"
+        git push origin "$tagName"
+    
+    - name: Build executable with PyInstaller
+      run: |
+        # 安装PyInstaller
+        pip install pyinstaller
+        
+        # 创建spec文件（如果需要）
+        # pyinstaller --onefile --name "LuoguMonitor" --windowed main.py
+        
+        # 暂时只进行测试构建
+        pyinstaller --onefile --name "LuoguMonitorDev" main.py --distpath ./dist-test
+        
+        # 检查构建结果
+        dir ./dist-test
+    
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: luogu-monitor-dev-build
+        path: |
+          ./dist-test/
+        if-no-files-found: error
+    
+    - name: Create GitHub Release
+      id: create_release
+      uses: softprops/action-gh-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ steps.tag_version.outputs.TAG_NAME }}
+        name: "Dev Build ${{ steps.tag_version.outputs.TAG_NAME }}"
+        body: |
+          ## 开发构建版本
+          
+          这是一个自动生成的开发构建版本，包含最新的代码更改。
+          
+          ### 构建信息
+          - 构建时间: ${{ steps.tag_version.outputs.TAG_NAME }}
+          - 触发分支: ${{ github.ref }}
+          - Commit: ${{ github.sha }}
+          
+          ### 使用说明
+          1. 下载对应的可执行文件
+          2. 确保已安装必要的运行环境
+          3. 首次运行可能需要安装额外的依赖
+          
+          ### 注意事项
+          - 此为开发版本，可能存在不稳定情况
+          - 建议仅用于测试目的
+          - 正式使用请等待稳定版本发布
+        draft: false
+        prerelease: true
+        generate_release_notes: true
